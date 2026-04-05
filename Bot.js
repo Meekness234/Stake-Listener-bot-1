@@ -4,7 +4,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 const POLL_MS = 20000;
 
-let lastSeenId = null;
+let lastMultiplier = null;
 
 async function sendTelegram(text) {
   const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
@@ -17,61 +17,54 @@ async function sendTelegram(text) {
   return true;
 }
 
-async function fetchRealGames() {
+async function fetchCurrentMultiplier() {
   try {
-    const res = await fetch('https://stake.com/api/v2/crash/games?limit=10', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Origin': 'https://stake.com',
-        'Referer': 'https://stake.com/casino/games/crash'
-      }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.data?.games?.length) {
-        return data.data.games.map(g => ({
-          id: g.id,
-          crashpoint: g.crashPoint / 100,
-          startTime: new Date(g.createdAt).toISOString()
-        }));
-      }
+    const res = await fetch('https://edgegpt.bot/crash');
+    const html = await res.text();
+    // Find the multiplier inside <div class="text-rose-500">X.XXx</div>
+    const match = html.match(/<div class="text-rose-500">(\d+\.\d+)x<\/div>/);
+    if (match) {
+      const multiplier = parseFloat(match[1]);
+      console.log(`📊 Scraped multiplier: ${multiplier}x`);
+      return multiplier;
     } else {
-      console.log(`Main API HTTP ${res.status}`);
+      console.log("⚠️ Multiplier pattern not found in HTML");
     }
   } catch (e) {
-    console.log("Main API error:", e.message);
+    console.log("Scraping error:", e.message);
   }
-  return [];
+  return null;
 }
 
-async function checkNewGames() {
-  console.log("🔍 Checking for new Stake games...");
-  const games = await fetchRealGames();
-  if (!games.length) {
-    console.log("⚠️ No live data – will retry later");
+async function checkNewGame() {
+  console.log("🔍 Checking edgegpt.bot/crash...");
+  const currentMultiplier = await fetchCurrentMultiplier();
+  if (currentMultiplier === null) {
+    console.log("⚠️ Could not fetch multiplier – retrying later");
     return;
   }
-  const sorted = [...games].sort((a, b) => b.id - a.id);
-  for (const game of sorted) {
-    if (!lastSeenId || game.id > lastSeenId) {
-      const mult = parseFloat(game.crashpoint).toFixed(2);
-      const msg = `🎲 *Round #${game.id}*\n🚀 ${mult}x\n🕒 ${new Date(game.startTime).toLocaleTimeString()}`;
-      await sendTelegram(msg);
-      console.log(`✅ Sent #${game.id} - ${mult}x`);
-      lastSeenId = game.id;
-    }
+
+  // If multiplier changed (or first run), send update
+  if (lastMultiplier !== currentMultiplier) {
+    const timestamp = new Date().toLocaleTimeString();
+    const msg = `🎲 *Stake Crash Update*\n🚀 Multiplier: ${currentMultiplier}x\n🕒 ${timestamp}`;
+    await sendTelegram(msg);
+    console.log(`✅ Sent new multiplier: ${currentMultiplier}x`);
+    lastMultiplier = currentMultiplier;
+  } else {
+    console.log(`⏳ No change – still ${currentMultiplier}x`);
   }
 }
 
 async function start() {
   if (!BOT_TOKEN || !CHAT_ID) {
-    console.error("Missing BOT_TOKEN or CHAT_ID env vars");
+    console.error("❌ Missing BOT_TOKEN or CHAT_ID environment variables");
     return;
   }
-  console.log("🤖 Live Stake Bot starting...");
-  await sendTelegram("✅ Bot is online and running on Render!");
-  await checkNewGames();
-  setInterval(checkNewGames, POLL_MS);
+  console.log("🤖 Stake Crash Bot (scraping mode) starting...");
+  await sendTelegram("✅ Bot is online! Scraping edgegpt.bot/crash for live multipliers.");
+  await checkNewGame();
+  setInterval(checkNewGame, POLL_MS);
 }
 
 start().catch(console.error);
