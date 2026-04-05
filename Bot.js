@@ -1,3 +1,5 @@
+const fetch = require('node-fetch');
+
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 const POLL_MS = 20000;
@@ -46,7 +48,7 @@ async function checkNewGames() {
   console.log("🔍 Checking for new Stake games...");
   const games = await fetchRealGames();
   if (!games.length) {
-    console.log("⚠️ No live data – all mirrors down. Will retry.");
+    console.log("⚠️ No live data – will retry later");
     return;
   }
   const sorted = [...games].sort((a, b) => b.id - a.id);
@@ -67,7 +69,7 @@ async function start() {
     return;
   }
   console.log("🤖 Live Stake Bot starting...");
-  await sendTelegram("✅ Bot is online and running on Railway!");
+  await sendTelegram("✅ Bot is online and running on Render!");
   await checkNewGames();
   setInterval(checkNewGames, POLL_MS);
 }
